@@ -31,6 +31,11 @@ TRAIN_BATCH = libfann.TRAIN_BATCH
 TRAIN_RPROP = libfann.TRAIN_RPROP
 TRAIN_QUICKPROP = libfann.TRAIN_QUICKPROP
 
+ERRORFUNC_LINEAR = libfann.ERRORFUNC_LINEAR
+ERRORFUNC_TANH = libfann.ERRORFUNC_TANH
+STOPFUNC_MSE = libfann.STOPFUNC_MSE
+STOPFUNC_BIT = libfann.STOPFUNC_BIT
+
 class FANNLearner(Orange.classification.Learner):
     """
     Wrapper for FANN (Fast Arfificial Neural Network) library. The code is based on
@@ -46,19 +51,22 @@ class FANNLearner(Orange.classification.Learner):
             self.__init__(**kwargs)
             return self(data,weight)
 
-    def __init__(self, name="NeuralNetworkFANN", n_mid=10, learning_rate=0.9, max_iter=1000,
+    _defaults = dict(name="NeuralNetworkFANN", n_mid=10, learning_rate=0.9, max_iter=1000,
                  desired_error=0.001, normalization=True, activation_function=SIGMOID_STEPWISE,
-                 algorithm=TRAIN_INCREMENTAL):
+                 algorithm=TRAIN_INCREMENTAL, error_function=ERRORFUNC_LINEAR,
+                 stop_function=STOPFUNC_MSE)
 
-        self.name = name
-        self.n_mid = n_mid
-        self.learning_rate = learning_rate
-        self.max_iter = max_iter
-        self.desired_error = desired_error
-        self.normalization = normalization
-        self.activation_function = activation_function
-        self.is_symmetric = activation_function in SYMMETRIC_FUNCTIONS
-        self.algorithm = algorithm
+    def __init__(self, **kwargs):
+
+        # Raise exception if any non-supported keywords supplied
+        if set(kwargs.keys()) - set(self._defaults.keys()):
+            raise KeyError("unsupported keyword argument")
+ 
+        # Update our instance with defaults, then keyword args
+        self.__dict__.update(self._defaults)
+        self.__dict__.update(kwargs)
+   
+        self.is_symmetric = self.activation_function in SYMMETRIC_FUNCTIONS
     
     def __call__(self,data,weight=0):
 
@@ -104,6 +112,8 @@ class FANNLearner(Orange.classification.Learner):
         self.ann.set_activation_function_hidden(self.activation_function)
         self.ann.set_learning_rate(self.learning_rate)
         self.ann.set_training_algorithm(self.algorithm)
+        self.ann.set_train_stop_function(self.stop_function)
+        self.ann.set_train_error_function(self.error_function)
   
         nn_data = libfann.training_data()
         nn_data.set_train_data(X, Y)
@@ -174,7 +184,8 @@ if __name__ == '__main__':
     global_timer = time.time()
 
     data = Orange.data.Table('wdbc')
-    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=0.001)
+    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=4,
+                     stop_function=STOPFUNC_BIT)
     res = Orange.evaluation.testing.cross_validation([l1],data, 3)
    
     scores = Orange.evaluation.scoring.CA(res)
