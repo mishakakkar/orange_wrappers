@@ -5,6 +5,32 @@ import numpy as np
 
 import math
 
+LINEAR = libfann.LINEAR
+#THRESHOLD = libfann.THRESHOLD
+#THRESHOLD_SYMMETRIC = libfann.THRESHOLD_SYMMETRIC
+SIGMOID = libfann.SIGMOID
+SIGMOID_STEPWISE = libfann.SIGMOID_STEPWISE
+SIGMOID_SYMMETRIC = libfann.SIGMOID_SYMMETRIC
+SIGMOID_SYMMETRIC_STEPWISE = libfann.SIGMOID_SYMMETRIC_STEPWISE
+GAUSSIAN = libfann.GAUSSIAN
+GAUSSIAN_SYMMETRIC = libfann.GAUSSIAN_SYMMETRIC
+GAUSSIAN_STEPWISE = libfann.GAUSSIAN_STEPWISE
+ELLIOT = libfann.ELLIOT
+ELLIOT_SYMMETRIC = libfann.ELLIOT_SYMMETRIC
+LINEAR_PIECE = libfann.LINEAR_PIECE
+LINEAR_PIECE_SYMMETRIC = libfann.LINEAR_PIECE_SYMMETRIC
+SIN_SYMMETRIC = libfann.SIN_SYMMETRIC
+COS_SYMMETRIC = libfann.COS_SYMMETRIC
+
+SYMMETRIC_FUNCTIONS = [SIGMOID_SYMMETRIC, SIGMOID_SYMMETRIC_STEPWISE, GAUSSIAN_SYMMETRIC,
+                       ELLIOT_SYMMETRIC, LINEAR_PIECE_SYMMETRIC, SIN_SYMMETRIC, COS_SYMMETRIC]
+
+
+TRAIN_INCREMENTAL = libfann.TRAIN_INCREMENTAL
+TRAIN_BATCH = libfann.TRAIN_BATCH
+TRAIN_RPROP = libfann.TRAIN_RPROP
+TRAIN_QUICKPROP = libfann.TRAIN_QUICKPROP
+
 class FANNLearner(Orange.classification.Learner):
     """
     Wrapper for FANN (Fast Arfificial Neural Network) library. The code is based on
@@ -20,22 +46,28 @@ class FANNLearner(Orange.classification.Learner):
             self.__init__(**kwargs)
             return self(data,weight)
 
-    def __init__(self, name="NeuralNetwork", n_mid=10, learning_rate=0.9, max_iter=1000,
-                 desired_error=0.001):
+    def __init__(self, name="NeuralNetworkFANN", n_mid=10, learning_rate=0.9, max_iter=1000,
+                 desired_error=0.001, normalization=True, activation_function=SIGMOID_STEPWISE,
+                 algorithm=TRAIN_INCREMENTAL):
 
         self.name = name
         self.n_mid = n_mid
         self.learning_rate = learning_rate
         self.max_iter = max_iter
         self.desired_error = desired_error
+        self.normalization = normalization
+        self.activation_function = activation_function
+        self.is_symmetric = activation_function in SYMMETRIC_FUNCTIONS
+        self.algorithm = algorithm
     
     def __call__(self,data,weight=0):
 
         #convert and normalize attribute data
-        X = data.to_numpy()[0] 
-        self.minv = X.min(axis=0)
-        self.maxv = X.max(axis=0)
-        X = (X - self.minv) / self.maxv
+        X = data.to_numpy()[0]
+        if self.normalization:
+            self.minv = X.min(axis=0)
+            self.maxv = X.max(axis=0)
+            X = self.normalize(X) 
 
         #converts multi-target or single-target classes to numpy
         if data.domain.class_vars:
@@ -68,13 +100,10 @@ class FANNLearner(Orange.classification.Learner):
         #initialize neural network
         self.ann = libfann.neural_net()
         self.ann.create_standard_array((len(X[0]), self.n_mid, len(Y[0])))
-        self.ann.set_activation_function_output(libfann.SIGMOID_STEPWISE)
-        self.ann.set_activation_function_hidden(libfann.SIGMOID_STEPWISE)
+        self.ann.set_activation_function_output(self.activation_function)
+        self.ann.set_activation_function_hidden(self.activation_function)
         self.ann.set_learning_rate(self.learning_rate)
-        #self.ann.set_training_algorithm(libfann.TRAIN_BATCH)
-        #self.ann.set_training_algorithm(libfann.TRAIN_INCREMENTAL)
-        self.ann.set_training_algorithm(libfann.TRAIN_RPROP)
-        #self.ann.set_training_algorithm(libfann.TRAIN_QUICKPROP)
+        self.ann.set_training_algorithm(self.algorithm)
   
         nn_data = libfann.training_data()
         nn_data.set_train_data(X, Y)
@@ -83,8 +112,15 @@ class FANNLearner(Orange.classification.Learner):
 
         return FANNClassifier(classifier=self.classify, domain = data.domain)
 
+    def normalize(self, x):
+       if self.is_symmetric: 
+           return (x - self.minv) / (self.maxv*0.5) - 1.0
+       else:
+           return (x - self.minv) / self.maxv
+       
     def classify(self, x):
-        x = (x - self.minv) / self.maxv
+        if self.normalization:
+            x = self.normalize(x)
         return self.ann.run(x)
 
 class FANNClassifier():
@@ -138,7 +174,7 @@ if __name__ == '__main__':
     global_timer = time.time()
 
     data = Orange.data.Table('wdbc')
-    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=0.01)
+    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=0.001)
     res = Orange.evaluation.testing.cross_validation([l1],data, 3)
    
     scores = Orange.evaluation.scoring.CA(res)
