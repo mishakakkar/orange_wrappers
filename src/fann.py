@@ -89,6 +89,8 @@ class FANNLearner(Orange.classification.Learner):
         if data.domain.class_vars:
             cvals = [len(cv.values) if len(cv.values) > 2 else 1 for cv in data.domain.class_vars]
             Y = np.zeros((len(data), sum(cvals)))
+            if self.is_symmetric:
+                Y.fill(-1.0)
             cvals = [0]+[sum(cvals[0:i+1]) for i in xrange(len(cvals))]  
 
             for i in xrange(len(data)):
@@ -96,9 +98,15 @@ class FANNLearner(Orange.classification.Learner):
                     if cvals[j+1] - cvals[j] > 2:
                         Y[i, cvals[j] + int(data[i].get_classes()[j])] = 1.0
                     else:
-                        Y[i, cvals[j]] = float(data[i].get_classes()[j])
+                        if self.is_symmetric:
+                            Y[i, cvals[j]] = float(data[i].get_classes()[j])*2-1
+                        else:    
+                            Y[i, cvals[j]] = float(data[i].get_classes()[j])
         else:
-            y = np.array([int(d.get_class()) for d in data])
+            if self.is_symmetric:
+                y = np.array([float(d.get_class())*2-1 for d in data])
+            else:
+                y = np.array([float(d.get_class()) for d in data])
             n_classes = len(data.domain.class_var.values)
             if n_classes > 2:
                 Y = np.eye(n_classes)[y]
@@ -184,8 +192,8 @@ if __name__ == '__main__':
     global_timer = time.time()
 
     data = Orange.data.Table('wdbc')
-    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=4,
-                     stop_function=STOPFUNC_BIT)
+    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=0.001)
+                     #activation_function=SIGMOID_SYMMETRIC_STEPWISE)
     res = Orange.evaluation.testing.cross_validation([l1],data, 3)
    
     scores = Orange.evaluation.scoring.CA(res)
