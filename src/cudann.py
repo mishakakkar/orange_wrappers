@@ -1,45 +1,13 @@
 ﻿import Orange
-import random
-from pyfann import libfann
+from pycudann import *
 import numpy as np
 
 import math
 
-LINEAR = libfann.LINEAR
-#THRESHOLD = libfann.THRESHOLD
-#THRESHOLD_SYMMETRIC = libfann.THRESHOLD_SYMMETRIC
-SIGMOID = libfann.SIGMOID
-SIGMOID_STEPWISE = libfann.SIGMOID_STEPWISE
-SIGMOID_SYMMETRIC = libfann.SIGMOID_SYMMETRIC
-SIGMOID_SYMMETRIC_STEPWISE = libfann.SIGMOID_SYMMETRIC_STEPWISE
-GAUSSIAN = libfann.GAUSSIAN
-GAUSSIAN_SYMMETRIC = libfann.GAUSSIAN_SYMMETRIC
-GAUSSIAN_STEPWISE = libfann.GAUSSIAN_STEPWISE
-ELLIOT = libfann.ELLIOT
-ELLIOT_SYMMETRIC = libfann.ELLIOT_SYMMETRIC
-LINEAR_PIECE = libfann.LINEAR_PIECE
-LINEAR_PIECE_SYMMETRIC = libfann.LINEAR_PIECE_SYMMETRIC
-SIN_SYMMETRIC = libfann.SIN_SYMMETRIC
-COS_SYMMETRIC = libfann.COS_SYMMETRIC
-
-SYMMETRIC_FUNCTIONS = [SIGMOID_SYMMETRIC, SIGMOID_SYMMETRIC_STEPWISE, GAUSSIAN_SYMMETRIC,
-                       ELLIOT_SYMMETRIC, LINEAR_PIECE_SYMMETRIC, SIN_SYMMETRIC, COS_SYMMETRIC]
-
-
-TRAIN_INCREMENTAL = libfann.TRAIN_INCREMENTAL
-TRAIN_BATCH = libfann.TRAIN_BATCH
-TRAIN_RPROP = libfann.TRAIN_RPROP
-TRAIN_QUICKPROP = libfann.TRAIN_QUICKPROP
-
-ERRORFUNC_LINEAR = libfann.ERRORFUNC_LINEAR
-ERRORFUNC_TANH = libfann.ERRORFUNC_TANH
-STOPFUNC_MSE = libfann.STOPFUNC_MSE
-STOPFUNC_BIT = libfann.STOPFUNC_BIT
-
-class FANNLearner(Orange.classification.Learner):
+class CudaNNLearner(Orange.classification.Learner):
     """
-    Wrapper for FANN (Fast Arfificial Neural Network) library. The code is based on
-    the wrappers found in Orange.classification.neural.
+    Wrapper for libcudann library. The code is based on the wrappers found in
+    Orange.classification.neural
     """
 
     def __new__(cls, data=None, weight = 0, **kwargs):
@@ -51,22 +19,21 @@ class FANNLearner(Orange.classification.Learner):
             self.__init__(**kwargs)
             return self(data,weight)
 
-    _defaults = dict(name="NeuralNetworkFANN", n_mid=10, learning_rate=0.9, max_iter=1000,
-                 desired_error=0.001, normalization=True, activation_function=SIGMOID_STEPWISE,
-                 algorithm=TRAIN_INCREMENTAL, error_function=ERRORFUNC_LINEAR,
-                 stop_function=STOPFUNC_MSE)
+    def __init__(self, name="NeuralNetworkCuda", normalization=True, hidden_layers=None,
+                 activation_functions=None, **kwargs):
 
-    def __init__(self, **kwargs):
+        self.name = name
+        self.normalization = normalization
+        self.train_params = kwargs
+  
+        if hidden_layers is None:
+            hidden_layers = [10] 
+        if activation_functions is None:
+            activation_functions = [SIGM, SIGM, SIGM]
+        self.hidden_layers = hidden_layers
+        self.activation_functions = activation_functions
 
-        # Raise exception if any non-supported keywords supplied
-        if set(kwargs.keys()) - set(self._defaults.keys()):
-            raise KeyError("unsupported keyword argument")
- 
-        # Update our instance with defaults, then keyword args
-        self.__dict__.update(self._defaults)
-        self.__dict__.update(kwargs)
-   
-        self.is_symmetric = self.activation_function in SYMMETRIC_FUNCTIONS
+        self.is_symmetric = (self.activation_functions[0] == TANH)
     
     def __call__(self,data,weight=0):
 
@@ -114,22 +81,15 @@ class FANNLearner(Orange.classification.Learner):
                 Y = y[:,np.newaxis]
       
         #initialize neural network
-        self.ann = libfann.neural_net()
-        self.ann.create_standard_array((len(X[0]), self.n_mid, len(Y[0])))
-        self.ann.set_activation_function_output(self.activation_function)
-        self.ann.set_activation_function_hidden(self.activation_function)
-        self.ann.set_learning_rate(self.learning_rate)
-        self.ann.set_training_algorithm(self.algorithm)
-        self.ann.set_train_stop_function(self.stop_function)
-        self.ann.set_train_error_function(self.error_function)
-  
-        nn_data = libfann.training_data()
-        
-        nn_data.set_train_data(X, Y)
+        self.ann = FeedForwardNN([len(X[0])] + self.hidden_layers + [len(Y[0])],
+                                 self.activation_functions)
+        nn_data = LearningSet(X, Y)
+        trainer = FeedForwardNNTrainer()
+        trainer.selectNet(self.ann)
+        trainer.selectTrainingSet(nn_data)
+        trainer.train(**self.train_params)
 
-        self.ann.train_on_data(nn_data, self.max_iter, 100, self.desired_error)
-
-        return FANNClassifier(classifier=self.classify, domain = data.domain)
+        return CudaNNClassifier(classifier=self.classify, domain = data.domain)
 
     def normalize(self, x):
        if self.is_symmetric: 
@@ -140,9 +100,9 @@ class FANNLearner(Orange.classification.Learner):
     def classify(self, x):
         if self.normalization:
             x = self.normalize(x)
-        return self.ann.run(x)
+        return self.ann.compute(x)
 
-class FANNClassifier():
+class CudaNNClassifier():
     
     def __init__(self,**kwargs):
         self.__dict__.update(**kwargs)
@@ -193,8 +153,7 @@ if __name__ == '__main__':
     global_timer = time.time()
 
     data = Orange.data.Table('wdbc')
-    l1 = FANNLearner(n_mid=10, learning_rate=0.7, max_iter=2000, desired_error=0.001)
-                     #activation_function=SIGMOID_SYMMETRIC_STEPWISE)
+    l1 = CudaNNLearner(print_type=PRINT_ALL,max_epochs=2000)
     res = Orange.evaluation.testing.cross_validation([l1],data, 3)
    
     scores = Orange.evaluation.scoring.CA(res)
