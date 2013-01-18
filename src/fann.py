@@ -140,7 +140,7 @@ class FANNLearner(Orange.classification.Learner):
     def classify(self, x):
         if self.normalization:
             x = self.normalize(x)
-        res = self.ann.compute(x)
+        res = self.ann.run(x)
         if self.is_symmetric:
             res = [(r + 1.0)/2.0 for r in res]
         return res
