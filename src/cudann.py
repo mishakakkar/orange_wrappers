@@ -1,8 +1,9 @@
 ﻿import Orange
 from pycudann import *
 import numpy as np
-
 import math
+
+import neural_common
 
 class CudaNNLearner(Orange.classification.Learner):
     """
@@ -33,7 +34,8 @@ class CudaNNLearner(Orange.classification.Learner):
         self.hidden_layers = hidden_layers
         self.activation_functions = activation_functions
 
-        self.is_symmetric = (self.activation_functions[0] == TANH)
+        self.is_symmetric_input = (self.activation_functions[0] == TANH)
+        self.is_symmetric_output = (self.activation_functions[0] == TANH)
     
     def __call__(self,data,weight=0):
 
@@ -56,7 +58,7 @@ class CudaNNLearner(Orange.classification.Learner):
         if data.domain.class_vars:
             cvals = [len(cv.values) if len(cv.values) > 2 else 1 for cv in data.domain.class_vars]
             Y = np.zeros((len(data), sum(cvals)))
-            if self.is_symmetric:
+            if self.is_symmetric_output:
                 Y.fill(-1.0)
             cvals = [0]+[sum(cvals[0:i+1]) for i in xrange(len(cvals))]  
 
@@ -70,7 +72,7 @@ class CudaNNLearner(Orange.classification.Learner):
                         else:    
                             Y[i, cvals[j]] = float(data[i].get_classes()[j])
         else:
-            if self.is_symmetric:
+            if self.is_symmetric_output:
                 y = np.array([float(d.get_class())*2-1 for d in data])
             else:
                 y = np.array([float(d.get_class()) for d in data])
@@ -92,7 +94,7 @@ class CudaNNLearner(Orange.classification.Learner):
         return CudaNNClassifier(classifier=self.classify, domain = data.domain)
 
     def normalize(self, x):
-       if self.is_symmetric: 
+       if self.is_symmetric_input: 
            return (x - self.minv) / (self.maxv*0.5) - 1.0
        else:
            return (x - self.minv) / self.maxv
@@ -101,54 +103,11 @@ class CudaNNLearner(Orange.classification.Learner):
         if self.normalization:
             x = self.normalize(x)
         res = self.ann.compute(x)
-        if self.is_symmetric:
+        if self.is_symmetric_output:
             res = [(r + 1.0)/2.0 for r in res]
         return res
 
-class CudaNNClassifier():
-    
-    def __init__(self,**kwargs):
-        self.__dict__.update(**kwargs)
-
-    def __call__(self,example, result_type=Orange.core.GetValue):
-
-        if not self.domain.class_vars: example = [example[i] for i in xrange(len(example)-1)]
-        input = np.array([float(e) for e in example])
-
-        results = self.classifier(input)
-
-        mt_prob = []
-        mt_value = []
-          
-        if self.domain.class_vars:
-            cvals = [len(cv.values) if len(cv.values) > 2 else 1 for cv in self.domain.class_vars]
-            cvals = [0] + [sum(cvals[0:i]) for i in xrange(1, len(cvals) + 1)]
-
-            for cls in xrange(len(self.domain.class_vars)):
-                if cvals[cls+1]-cvals[cls] > 2:
-                    cprob = Orange.statistics.distribution.Discrete(results[cvals[cls]:cvals[cls+1]])
-                    cprob.normalize()
-                else:
-                    r = results[cvals[cls]]
-                    cprob = Orange.statistics.distribution.Discrete([1.0 - r, r])
-
-                mt_prob.append(cprob)
-                mt_value.append(Orange.data.Value(self.domain.class_vars[cls], cprob.values().index(max(cprob))))
-        else:
-            if len(results) > 1:
-                cprob = Orange.statistics.distribution.Discrete(results)
-                cprob.normalize()
-            else:
-                r = results[0]
-                cprob = Orange.statistics.distribution.Discrete([1.0 - r, r])
-            
-            mt_prob = cprob
-            mt_value = Orange.data.Value(self.domain.class_var, cprob.values().index(max(cprob)))
-
-        if result_type == Orange.core.GetValue: return tuple(mt_value) if self.domain.class_vars else mt_value
-        elif result_type == Orange.core.GetProbabilities: return tuple(mt_prob) if self.domain.class_vars else mt_prob
-        else: 
-            return [tuple(mt_value), tuple(mt_prob)] if self.domain.class_vars else [mt_value, mt_prob] 
+CudaNNClassifier = neural_common.NeuralNetClassifier
 
 if __name__ == '__main__':
     import time
@@ -156,9 +115,11 @@ if __name__ == '__main__':
     global_timer = time.time()
 
     data = Orange.data.Table('wdbc')
-    l1 = CudaNNLearner(print_type=PRINT_ALL,max_epochs=2000)
-    res = Orange.evaluation.testing.cross_validation([l1],data, 3)
-   
+    l1 = CudaNNLearner(print_type=PRINT_ALL,max_epochs=2000, activation_functions=[TANH, SIGM, TANH])
+    l2 = CudaNNLearner(print_type=PRINT_ALL,max_epochs=2000, activation_functions=[TANH, SIGM, SIGM])
+    l3 = CudaNNLearner(print_type=PRINT_ALL,max_epochs=2000, activation_functions=[SIGM, SIGM, SIGM])
+    res = Orange.evaluation.testing.cross_validation([l1, l2, l3],data, 3)
+    
     scores = Orange.evaluation.scoring.CA(res)
 
     for i in range(len(scores)):

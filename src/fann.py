@@ -2,7 +2,7 @@
 import random
 from pyfann import libfann
 import numpy as np
-
+import neural_common
 import math
 
 LINEAR = libfann.LINEAR
@@ -145,50 +145,7 @@ class FANNLearner(Orange.classification.Learner):
             res = [(r + 1.0)/2.0 for r in res]
         return res
 
-class FANNClassifier():
-    
-    def __init__(self,**kwargs):
-        self.__dict__.update(**kwargs)
-
-    def __call__(self,example, result_type=Orange.core.GetValue):
-
-        if not self.domain.class_vars: example = [example[i] for i in xrange(len(example)-1)]
-        input = np.array([float(e) for e in example])
-
-        results = self.classifier(input)
-
-        mt_prob = []
-        mt_value = []
-          
-        if self.domain.class_vars:
-            cvals = [len(cv.values) if len(cv.values) > 2 else 1 for cv in self.domain.class_vars]
-            cvals = [0] + [sum(cvals[0:i]) for i in xrange(1, len(cvals) + 1)]
-
-            for cls in xrange(len(self.domain.class_vars)):
-                if cvals[cls+1]-cvals[cls] > 2:
-                    cprob = Orange.statistics.distribution.Discrete(results[cvals[cls]:cvals[cls+1]])
-                    cprob.normalize()
-                else:
-                    r = results[cvals[cls]]
-                    cprob = Orange.statistics.distribution.Discrete([1.0 - r, r])
-
-                mt_prob.append(cprob)
-                mt_value.append(Orange.data.Value(self.domain.class_vars[cls], cprob.values().index(max(cprob))))
-        else:
-            if len(results) > 1:
-                cprob = Orange.statistics.distribution.Discrete(results)
-                cprob.normalize()
-            else:
-                r = results[0]
-                cprob = Orange.statistics.distribution.Discrete([1.0 - r, r])
-            
-            mt_prob = cprob
-            mt_value = Orange.data.Value(self.domain.class_var, cprob.values().index(max(cprob)))
-
-        if result_type == Orange.core.GetValue: return tuple(mt_value) if self.domain.class_vars else mt_value
-        elif result_type == Orange.core.GetProbabilities: return tuple(mt_prob) if self.domain.class_vars else mt_prob
-        else: 
-            return [tuple(mt_value), tuple(mt_prob)] if self.domain.class_vars else [mt_value, mt_prob] 
+FANNClassifier = neural_common.NeuralNetClassifier
 
 if __name__ == '__main__':
     import time
