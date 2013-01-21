@@ -1,40 +1,12 @@
 ﻿import Orange
 import random
-from pyfann import libfann
+from pyfann.libfann import *
 import numpy as np
 import neural_common
 import math
 
-LINEAR = libfann.LINEAR
-#THRESHOLD = libfann.THRESHOLD
-#THRESHOLD_SYMMETRIC = libfann.THRESHOLD_SYMMETRIC
-SIGMOID = libfann.SIGMOID
-SIGMOID_STEPWISE = libfann.SIGMOID_STEPWISE
-SIGMOID_SYMMETRIC = libfann.SIGMOID_SYMMETRIC
-SIGMOID_SYMMETRIC_STEPWISE = libfann.SIGMOID_SYMMETRIC_STEPWISE
-GAUSSIAN = libfann.GAUSSIAN
-GAUSSIAN_SYMMETRIC = libfann.GAUSSIAN_SYMMETRIC
-GAUSSIAN_STEPWISE = libfann.GAUSSIAN_STEPWISE
-ELLIOT = libfann.ELLIOT
-ELLIOT_SYMMETRIC = libfann.ELLIOT_SYMMETRIC
-LINEAR_PIECE = libfann.LINEAR_PIECE
-LINEAR_PIECE_SYMMETRIC = libfann.LINEAR_PIECE_SYMMETRIC
-SIN_SYMMETRIC = libfann.SIN_SYMMETRIC
-COS_SYMMETRIC = libfann.COS_SYMMETRIC
-
 SYMMETRIC_FUNCTIONS = [SIGMOID_SYMMETRIC, SIGMOID_SYMMETRIC_STEPWISE, GAUSSIAN_SYMMETRIC,
                        ELLIOT_SYMMETRIC, LINEAR_PIECE_SYMMETRIC, SIN_SYMMETRIC, COS_SYMMETRIC]
-
-
-TRAIN_INCREMENTAL = libfann.TRAIN_INCREMENTAL
-TRAIN_BATCH = libfann.TRAIN_BATCH
-TRAIN_RPROP = libfann.TRAIN_RPROP
-TRAIN_QUICKPROP = libfann.TRAIN_QUICKPROP
-
-ERRORFUNC_LINEAR = libfann.ERRORFUNC_LINEAR
-ERRORFUNC_TANH = libfann.ERRORFUNC_TANH
-STOPFUNC_MSE = libfann.STOPFUNC_MSE
-STOPFUNC_BIT = libfann.STOPFUNC_BIT
 
 class FANNLearner(Orange.classification.Learner):
     """
@@ -114,7 +86,7 @@ class FANNLearner(Orange.classification.Learner):
                 Y = y[:,np.newaxis]
       
         #initialize neural network
-        self.ann = libfann.neural_net()
+        self.ann = neural_net()
         self.ann.create_standard_array((len(X[0]), self.n_mid, len(Y[0])))
         self.ann.set_activation_function_output(self.activation_function)
         self.ann.set_activation_function_hidden(self.activation_function)
@@ -123,7 +95,7 @@ class FANNLearner(Orange.classification.Learner):
         self.ann.set_train_stop_function(self.stop_function)
         self.ann.set_train_error_function(self.error_function)
   
-        nn_data = libfann.training_data()
+        nn_data = training_data()
         
         nn_data.set_train_data(X, Y)
 
