@@ -26,6 +26,9 @@ class ScikitSVMLearner(Orange.classification.Learner):
         X = XY[0]
         Y = XY[1]
 
+        if len(np.unique(Y)) == 1:
+            return Orange.classification.majority.MajorityLearner(data)
+
         svc = svm.SVC(**self.kwargs)
         svc.fit(X, Y)
 
